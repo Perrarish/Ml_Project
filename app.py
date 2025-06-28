@@ -12,9 +12,10 @@
     app = Flask(__name__)
 
     # Unzip and load the trained model from 'modell.zip'
-    MODEL_ZIP_PATH = r'C:\Users\perra\OneDrive\Desktop\Project\modell.zip'
-    MODEL_EXTRACT_DIR = r'C:\Users\perra\OneDrive\Desktop\Project\modell_extracted'
-    MODEL_FILENAME = 'model.pkl'  # Adjust if your model file inside the zip has a different name
+    MODEL_ZIP_PATH = 'modell.zip'
+    MODEL_EXTRACT_DIR = 'modell_extracted'
+    DF_PATH = 'Datas.csv'
+  # Adjust if your model file inside the zip has a different name
 
     # Unzip only if not already extracted
     if not os.path.exists(os.path.join(MODEL_EXTRACT_DIR, MODEL_FILENAME)):
