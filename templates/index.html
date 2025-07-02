@@ -757,7 +757,7 @@
             ecgActiveBg.classList.add('active');
 
             // Send AJAX request to backend
-            fetch('/predict', {
+            fetch('http://localhost:5000/predict', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -795,6 +795,7 @@
                 }
             })
             .catch(err => {
+                console.error('Fetch error:', err); // <-- Add this line for debugging
                 loading.classList.remove('show');
                 outputSection.classList.add('show');
                 analyzeBtn.classList.remove('analyzing');

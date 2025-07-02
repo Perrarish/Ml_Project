@@ -4,34 +4,47 @@ import warnings
 import pandas as pd
 import zipfile
 import os
+from flask_cors import CORS
 
 # Suppress sklearn version mismatch warning
 from sklearn.exceptions import InconsistentVersionWarning
 warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
 
 app = Flask(__name__)
+CORS(app)
 
-# Unzip and load the trained model from 'modell.zip'
-MODEL_ZIP_PATH = r'C:\Users\perra\OneDrive\Desktop\Project\modell.zip'
-MODEL_EXTRACT_DIR = r'C:\Users\perra\OneDrive\Desktop\Project\modell_extracted'
-MODEL_FILENAME = 'model.pkl'  # Adjust if your model file inside the zip has a different name
+# Use environment variables or defaults for file paths (for Render compatibility)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_ZIP_PATH = os.environ.get('MODEL_ZIP_PATH', os.path.join(BASE_DIR, 'modell.zip'))
+MODEL_EXTRACT_DIR = os.environ.get('MODEL_EXTRACT_DIR', os.path.join(BASE_DIR, 'modell_extracted'))
+MODEL_FILENAME = os.environ.get('MODEL_FILENAME', 'model.pkl')
+DF_PATH = os.environ.get('DF_PATH', os.path.join(BASE_DIR, 'Datas.csv'))
 
 # Unzip only if not already extracted
-if not os.path.exists(os.path.join(MODEL_EXTRACT_DIR, MODEL_FILENAME)):
-    with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
-        zip_ref.extractall(MODEL_EXTRACT_DIR)
-
-MODEL_PATH = os.path.join(MODEL_EXTRACT_DIR, MODEL_FILENAME)
-model = joblib.load(MODEL_PATH)
-print(f"Loaded model from {MODEL_PATH}: {type(model)}")
+model = None
+if os.path.exists(MODEL_ZIP_PATH):
+    if not os.path.exists(os.path.join(MODEL_EXTRACT_DIR, MODEL_FILENAME)):
+        with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
+            zip_ref.extractall(MODEL_EXTRACT_DIR)
+    MODEL_PATH = os.path.join(MODEL_EXTRACT_DIR, MODEL_FILENAME)
+    if os.path.exists(MODEL_PATH):
+        model = joblib.load(MODEL_PATH)
+        print(f"Loaded model from {MODEL_PATH}: {type(model)}")
+    else:
+        print(f"ERROR: Model file {MODEL_PATH} not found after extraction.")
+else:
+    print(f"ERROR: Model zip file {MODEL_ZIP_PATH} not found.")
 
 # Load your CSV for lookup (do this once, at the top)
-DF_PATH = r'C:\Users\perra\OneDrive\Desktop\Project\Datas.csv'
 try:
     df = pd.read_csv(DF_PATH)
 except FileNotFoundError:
     print(f"ERROR: Could not find {DF_PATH}. Please check the file path and make sure the file exists.")
     df = None
+
+@app.route('/health', methods=['GET'])
+def health():
+    return "ok", 200
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -43,21 +56,25 @@ def index():
             prediction_text = "Please enter input values."
         else:
             try:
-                # Parse input as floats (comma-separated)
                 input_list = [float(x.strip()) for x in input_data.split(',')]
-                processed_input = [input_list]  # 2D array for model
+                processed_input = [input_list]
                 print("Processed input for model:", processed_input)
-                prediction = model.predict(processed_input)
-                print("Model prediction:", prediction)
-                result = prediction[0]
-                prediction_text = f"Result: {result}"
+                if model:
+                    prediction = model.predict(processed_input)
+                    print("Model prediction:", prediction)
+                    result = prediction[0]
+                    prediction_text = f"Result: {result}"
+                else:
+                    prediction_text = "Model not loaded."
             except Exception as e:
                 print("Prediction error:", str(e))
                 prediction_text = f"Prediction failed: {str(e)}"
     return render_template('index.html', prediction_text=prediction_text)
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['GET', 'POST'])
 def predict():
+    if request.method == 'GET':
+        return jsonify({'message': 'Use POST with JSON body: {"symptoms": "...", "age": ...}'})
     try:
         data = request.get_json()
         symptoms = data.get('symptoms', '')
@@ -71,6 +88,9 @@ def predict():
             age_value = float(age)
         except Exception:
             age_value = None
+
+        if not model:
+            return jsonify({'error': 'Model not loaded on server.'})
 
         model_input = [symptoms]
         print("Trying model_input:", model_input)
@@ -88,14 +108,12 @@ def predict():
 
         # Lookup in DataFrame for remedy, medicine, advice
         if df is not None:
-            # Make sure to ignore case and strip spaces for matching
             match = df[df['condition'].str.strip().str.lower() == str(predicted_condition).strip().lower()]
             if not match.empty:
                 row = match.iloc[0]
                 remedy = row.get('natural_remedy', '')
                 medicine = row.get('medicine', '')
                 advice = row.get('advice', '')
-                # Optional: Adjust dosage or advice based on age
                 mg_suggestion = ""
                 if age_value:
                     if age_value < 12:
@@ -126,6 +144,5 @@ def predict():
         return jsonify({'error': f'Prediction failed: {str(e)}'})
 
 if __name__ == '__main__':
-    app.run(debug=True)
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)  # or just app.run()
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
